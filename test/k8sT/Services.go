@@ -1920,13 +1920,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 		})
 
 		SkipItIf(helpers.RunsWithoutKubeProxy, "Tests NodePort (kube-proxy) with externalTrafficPolicy=Local", func() {
-			DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
-				// When kube-proxy is enabled, the host firewall is not
-				// compatible with externalTrafficPolicy=Local because traffic
-				// from pods to remote nodes goes through the tunnel.
-				// This issue is tracked at #12542.
-				"hostFirewall": "false",
-			})
+			DeployCiliumAndDNS(kubectl, ciliumFilename)
 			testExternalTrafficPolicyLocal()
 		})
 
@@ -1935,15 +1929,18 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			deploymentManager.Deploy(helpers.CiliumNamespace, IPSecSecret)
 			DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
 				"encryption.enabled": "true",
-				// When kube-proxy is enabled, the host firewall is not
-				// compatible with externalTrafficPolicy=Local because traffic
-				// from pods to remote nodes goes through the tunnel.
-				// This issue is tracked at #12542.
-				"hostFirewall": "false",
 			})
 			testExternalTrafficPolicyLocal()
 			deploymentManager.DeleteAll()
 			deploymentManager.DeleteCilium()
+		})
+
+		SkipItIf(helpers.RunsWithoutKubeProxy,
+			"Tests NodePort (kube-proxy) with the host firewall and externalTrafficPolicy=Local", func() {
+			DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
+				"hostFirewall": "true",
+			})
+			testExternalTrafficPolicyLocal()
 		})
 
 		// IPv6 tests do not work on Integrations like GKE as we don't have IPv6
