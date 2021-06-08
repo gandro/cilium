@@ -37,7 +37,7 @@ type sink struct {
 //  - sink.stop is called
 //  - ctx is cancelled
 //  - an error occurred
-func startSink(ctx context.Context, w pcap.RecordWriter, hdr pcap.Header, queueSize int) *sink {
+func startSink(ctx context.Context, p PcapSink, queueSize int) *sink {
 	s := &sink{
 		mutex:     lock.Mutex{},
 		queue:     make(chan record, queueSize),
@@ -52,7 +52,7 @@ func startSink(ctx context.Context, w pcap.RecordWriter, hdr pcap.Header, queueS
 		// close the channels when exiting.
 		var err error
 		defer func() {
-			closeErr := w.Close()
+			closeErr := p.Writer.Close()
 
 			s.mutex.Lock()
 			close(s.trigger)
@@ -66,7 +66,7 @@ func startSink(ctx context.Context, w pcap.RecordWriter, hdr pcap.Header, queueS
 			s.mutex.Unlock()
 		}()
 
-		if err = w.WriteHeader(hdr); err != nil {
+		if err = p.Writer.WriteHeader(p.Header); err != nil {
 			return
 		}
 
@@ -88,7 +88,7 @@ func startSink(ctx context.Context, w pcap.RecordWriter, hdr pcap.Header, queueS
 					OriginalLength: rec.origLen,
 				}
 
-				if err = w.WriteRecord(pcapRecord, rec.data); err != nil {
+				if err = p.Writer.WriteRecord(pcapRecord, rec.data); err != nil {
 					return
 				}
 
