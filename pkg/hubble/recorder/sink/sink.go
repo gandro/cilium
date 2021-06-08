@@ -136,10 +136,12 @@ func (s *sink) enqueue(rec record) {
 	s.mutex.Lock()
 	// copy queue to avoid concurrent close
 	q := s.queue
+	s.mutex.Unlock()
+
+	// already stopped
 	if q == nil {
 		return
 	}
-	s.mutex.Unlock()
 
 	select {
 	case q <- rec:
