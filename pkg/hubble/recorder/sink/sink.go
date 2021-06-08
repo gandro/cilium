@@ -64,10 +64,14 @@ func startSink(ctx context.Context, w pcap.RecordWriter, hdr pcap.Header, queueS
 			return
 		}
 
+		s.mutex.Lock()
+		queue := s.queue
+		s.mutex.Unlock()
+
 		for {
 			select {
-			// s.queue will be closed when the sink is unregistered
-			case rec, ok := <-s.queue:
+			// queue will be closed when the sink is unregistered
+			case rec, ok := <-queue:
 				if !ok {
 					return
 				}
