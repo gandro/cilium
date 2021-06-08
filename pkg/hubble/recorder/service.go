@@ -342,6 +342,7 @@ func (s *Service) startRecording(
 	})
 	scopedLog.Debug("starting new recording")
 
+	stop := req.GetStopCondition()
 	config := sink.PcapSink{
 		RuleID: ruleID,
 		Header: pcap.Header{
@@ -349,6 +350,11 @@ func (s *Service) startRecording(
 			Datalink:       pcap.Ethernet,
 		},
 		Writer: pcap.NewWriter(f),
+		StopCondition: sink.StopConditions{
+			PacketsCaptured: stop.GetPacketsCaptured(),
+			BytesCaptured:   stop.GetBytesCaptured(),
+			DurationElapsed: time.Duration(stop.GetNanosecondsElapsed()),
+		},
 	}
 
 	handle, err = s.dispatch.StartSink(ctx, config)

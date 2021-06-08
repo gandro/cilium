@@ -16,6 +16,7 @@ package sink
 
 import (
 	"context"
+	"time"
 
 	"github.com/cilium/cilium/pkg/hubble/recorder/pcap"
 	"github.com/cilium/cilium/pkg/lock"
@@ -35,6 +36,7 @@ type sink struct {
 // startSink creates a queue and go routine for the sink. The spawned go
 // routine will run until one of the following happens:
 //  - sink.stop is called
+//  - a p.StopCondition is reached
 //  - ctx is cancelled
 //  - an error occurred
 func startSink(ctx context.Context, p PcapSink, queueSize int) *sink {
@@ -64,6 +66,16 @@ func startSink(ctx context.Context, p PcapSink, queueSize int) *sink {
 			s.mutex.Unlock()
 		}()
 
+		stop := p.StopCondition
+		var stopAfter <-chan time.Time
+		if stop.DurationElapsed != 0 {
+			stopTimer := time.NewTimer(stop.DurationElapsed)
+			defer func() {
+				stopTimer.Stop()
+			}()
+			stopAfter = stopTimer.C
+		}
+
 		if err = p.Writer.WriteHeader(p.Header); err != nil {
 			return
 		}
@@ -90,10 +102,17 @@ func startSink(ctx context.Context, p PcapSink, queueSize int) *sink {
 					return
 				}
 
-				s.addToStatistics(Statistics{
+				stats := s.addToStatistics(Statistics{
 					PacketsWritten: 1,
 					BytesWritten:   uint64(rec.inclLen),
 				})
+				if (stop.PacketsCaptured > 0 && stats.PacketsWritten >= stop.PacketsCaptured) ||
+					(stop.BytesCaptured > 0 && stats.BytesWritten >= stop.BytesCaptured) {
+					return
+				}
+			case <-stopAfter:
+				// duration for stop condition has been reached
+				return
 			case <-ctx.Done():
 				err = ctx.Err()
 				return
@@ -114,8 +133,12 @@ func (s *sink) stop() {
 	s.mutex.Unlock()
 }
 
-func (s *sink) addToStatistics(add Statistics) {
+// addToStatistics adds add to the current statistics and returns the resulting
+// value.
+func (s *sink) addToStatistics(add Statistics) (result Statistics) {
 	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	s.stats.BytesWritten += add.BytesWritten
 	s.stats.PacketsWritten += add.PacketsWritten
 	s.stats.BytesLost += add.BytesLost
@@ -127,7 +150,7 @@ func (s *sink) addToStatistics(add Statistics) {
 	default:
 	}
 
-	s.mutex.Unlock()
+	return s.stats
 }
 
 // enqueue submits a new record to this sink. If the sink is not keeping up,
