@@ -52,6 +52,25 @@ backend:
 {{- end -}}
 {{- end -}}
 
+{{/*
+Return the appropriate apiVersion for cronjob.
+*/}}
+{{- define "cronjob.apiVersion" -}}
+{{- /* Workaround so that we can set the minimal k8s version that we support */ -}}
+{{- $k8sVersion := .Capabilities.KubeVersion.Version -}}
+{{- if .Values.Capabilities -}}
+{{- if .Values.Capabilities.KubeVersion -}}
+{{- if .Values.Capabilities.KubeVersion.Version -}}
+{{- $k8sVersion = .Values.Capabilities.KubeVersion.Version -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if semverCompare ">=1.21-0" $k8sVersion -}}
+{{- print "batch/v1" -}}
+{{- else -}}
+{{- print "batch/v1beta1" -}}
+{{- end -}}
+{{- end -}}
 
 {{/*
 Generate TLS certificates for Hubble Server and Hubble Relay.
