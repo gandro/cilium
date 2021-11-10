@@ -460,7 +460,12 @@ func NewDaemon(ctx context.Context, cancel context.CancelFunc, epMgr *endpointma
 
 	d.k8sWatcher.NodeChain.Register(d.endpointManager)
 	if option.Config.BGPAnnounceLBIP || option.Config.BGPAnnouncePodCIDR {
-		d.k8sWatcher.NodeChain.Register(d.bgpSpeaker)
+		switch option.Config.IPAMMode() {
+		case ipamOption.IPAMKubernetes:
+			d.k8sWatcher.NodeChain.Register(d.bgpSpeaker)
+		case ipamOption.IPAMClusterPool, ipamOption.IPAMClusterPoolV2:
+			d.k8sWatcher.CiliumNodeChain.Register(d.bgpSpeaker)
+		}
 	}
 
 	d.redirectPolicyManager.RegisterSvcCache(&d.k8sWatcher.K8sSvcCache)

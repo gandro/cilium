@@ -12,6 +12,7 @@ import (
 
 	"github.com/cilium/cilium/pkg/bgp/fence"
 	"github.com/cilium/cilium/pkg/k8s"
+	ciliumv2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
 	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/core/v1"
 	slim_discover_v1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/discovery/v1"
 	slim_discover_v1beta1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/api/discovery/v1beta1"
@@ -374,6 +375,103 @@ func (s *MetalLBSpeaker) OnDeleteNode(node *v1.Node) error {
 	return nil
 }
 
+// OnAddCiliumNode notifies the Speaker of a new CiliumNode.
+func (s *MetalLBSpeaker) OnAddCiliumNode(node *ciliumv2.CiliumNode) error {
+	if s.shutDown() {
+		return ErrShutDown
+	}
+	if node.GetName() != nodetypes.GetName() {
+		return nil // We don't care for other nodes.
+	}
+	var (
+		l = log.WithFields(logrus.Fields{
+			"component": "MetalLBSpeaker.OnAddCiliumNode",
+			"node":      node.Name,
+		})
+		meta = fence.Meta{}
+	)
+	if err := meta.FromObjectMeta(&node.ObjectMeta); err != nil {
+		l.WithError(err).Error("failed to parse event metadata")
+		return err
+	}
+
+	l.Debug("adding event to queue")
+	s.queue.Add(nodeEvent{
+		Meta:     meta,
+		op:       Add,
+		labels:   nodeLabels(node.Labels),
+		podCIDRs: ciliumNodePodCIDRs(node),
+	})
+	return nil
+}
+
+// OnUpdateCiliumNode notifies the Speaker of an update to a CiliumNode.
+func (s *MetalLBSpeaker) OnUpdateCiliumNode(oldNode, newNode *ciliumv2.CiliumNode) error {
+	if s.shutDown() {
+		return ErrShutDown
+	}
+	var (
+		l = log.WithFields(logrus.Fields{
+			"component": "MetalLBSpeaker.OnUpdateCiliumNode",
+			"node":      newNode.Name,
+		})
+		meta = fence.Meta{}
+	)
+	if err := meta.FromObjectMeta(&newNode.ObjectMeta); err != nil {
+		l.WithError(err).Error("failed to parse event metadata")
+		return err
+	}
+
+	if newNode.GetName() != nodetypes.GetName() {
+		return nil // We don't care for other nodes.
+	}
+
+	l.Debug("adding event to queue")
+	s.queue.Add(nodeEvent{
+		Meta:     meta,
+		op:       Update,
+		labels:   nodeLabels(newNode.Labels),
+		podCIDRs: ciliumNodePodCIDRs(newNode),
+	})
+	return nil
+}
+
+// OnDeleteCiliumNode notifies the Speaker of a CiliumNode deletion.
+//
+// When the speaker discovers the node that it is running on
+// is shuttig down it will send a BGP message to its peer
+// instructing it to withdrawal all previously advertised
+// routes.
+func (s *MetalLBSpeaker) OnDeleteCiliumNode(node *ciliumv2.CiliumNode) error {
+	if s.shutDown() {
+		return ErrShutDown
+	}
+	var (
+		l = log.WithFields(logrus.Fields{
+			"component": "MetalLBSpeaker.OnDeleteCiliumNode",
+			"node":      node.Name,
+		})
+		meta = fence.Meta{}
+	)
+	if err := meta.FromObjectMeta(&node.ObjectMeta); err != nil {
+		l.WithError(err).Error("failed to parse event metadata")
+		return err
+	}
+
+	if node.GetName() != nodetypes.GetName() {
+		return nil // We don't care for other nodes.
+	}
+	l.Debug("adding event to queue")
+	s.queue.Add(nodeEvent{
+		Meta:     meta,
+		op:       Delete,
+		labels:   nodeLabels(node.Labels),
+		podCIDRs: ciliumNodePodCIDRs(node),
+		withDraw: true,
+	})
+	return nil
+}
+
 // RegisterSvcCache registers the K8s watcher cache with this Speaker.
 func (s *MetalLBSpeaker) RegisterSvcCache(cache endpointsGetter) {
 	s.endpointsGetter = cache
@@ -501,5 +599,14 @@ func podCIDRs(node *v1.Node) *[]string {
 		}
 	}
 	podCIDRs = append(podCIDRs, node.Spec.PodCIDRs...)
+	return &podCIDRs
+}
+
+func ciliumNodePodCIDRs(node *ciliumv2.CiliumNode) *[]string {
+	if node == nil {
+		return nil
+	}
+	podCIDRs := make([]string, 0, len(node.Spec.IPAM.PodCIDRs))
+	podCIDRs = append(podCIDRs, node.Spec.IPAM.PodCIDRs...)
 	return &podCIDRs
 }
