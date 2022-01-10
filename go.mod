@@ -22,7 +22,6 @@ require (
 	github.com/cilium/ebpf v0.3.0
 	github.com/cilium/ipam v0.0.0-20201106170308-4184bc4bf9d6
 	github.com/cilium/proxy v0.0.0-20210121022617-de819bff23ee
-	github.com/cncf/udpa/go v0.0.0-20201211205326-cc1b757b3edd // indirect
 	github.com/containernetworking/cni v0.8.0
 	github.com/containernetworking/plugins v0.9.0
 	github.com/davecgh/go-spew v1.1.1
@@ -30,7 +29,7 @@ require (
 	github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/libnetwork v0.0.0-20190128195551-d8d4c8cf03d7
-	github.com/fsnotify/fsnotify v1.4.10-0.20200417215612-7f4cf4dd2b52
+	github.com/fsnotify/fsnotify v1.5.1
 	github.com/go-bindata/go-bindata/v3 v3.1.3
 	github.com/go-openapi/errors v0.19.9
 	github.com/go-openapi/loads v0.20.0
@@ -40,15 +39,15 @@ require (
 	github.com/go-openapi/swag v0.19.12
 	github.com/go-openapi/validate v0.20.0
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang/protobuf v1.4.3
-	github.com/google/go-cmp v0.5.4
+	github.com/golang/protobuf v1.5.2
+	github.com/google/go-cmp v0.5.6
 	github.com/google/gopacket v1.1.19
 	github.com/google/gops v0.3.14
 	github.com/google/renameio v1.0.0
 	github.com/google/uuid v1.1.4
 	github.com/gorilla/mux v1.8.0
-	github.com/hashicorp/consul/api v1.3.0
-	github.com/hashicorp/go-immutable-radix v1.3.0
+	github.com/hashicorp/consul/api v1.11.0
+	github.com/hashicorp/go-immutable-radix v1.3.1
 	github.com/hashicorp/golang-lru v0.5.4
 	// must be bound to this old version not to break libnetwork
 	github.com/ishidawataru/sctp v0.0.0-20180213033435-07191f837fed // indirect
@@ -56,7 +55,7 @@ require (
 	github.com/kevinburke/ssh_config v0.0.0-20201106050909-4977a11b4351
 	github.com/kr/pretty v0.2.1
 	github.com/mattn/go-shellwords v1.0.10
-	github.com/miekg/dns v1.0.14
+	github.com/miekg/dns v1.1.41
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/onsi/ginkgo v1.12.1
 	github.com/onsi/gomega v1.10.3
@@ -71,25 +70,26 @@ require (
 	github.com/servak/go-fastping v0.0.0-20160802140958-5718d12e20a0
 	github.com/shirou/gopsutil v2.20.4+incompatible
 	github.com/sirupsen/logrus v1.7.0
-	github.com/spf13/cobra v1.1.1
+	github.com/spf13/cobra v1.3.0
 	github.com/spf13/pflag v1.0.5
-	github.com/spf13/viper v1.7.1
-	github.com/stretchr/testify v1.6.1
+	github.com/spf13/viper v1.10.0
+	github.com/stretchr/testify v1.7.0
 	github.com/vishvananda/netlink v1.1.1-0.20201231054507-6ffafa9fc19b
 	github.com/vishvananda/netns v0.0.0-20201230012202-c4f3ca719c73
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20201125193152-8a03d2e9614b
 	go.uber.org/goleak v1.1.10
-	golang.org/x/crypto v0.0.0-20201217014255-9d1352758620
-	golang.org/x/net v0.0.0-20201224014010-6772e930b67b
-	golang.org/x/sync v0.0.0-20201207232520-09787c993a3a
-	golang.org/x/sys v0.0.0-20210110051926-789bb1bd4061
+	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
+	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	golang.org/x/sys v0.0.0-20211205182925-97ca703d548d
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
-	golang.org/x/tools v0.0.0-20210108195828-e2f9c7f1fc8e
-	google.golang.org/genproto v0.0.0-20210111234610-22ae2b108f89
-	google.golang.org/grpc v1.29.1
-	google.golang.org/protobuf v1.25.0
+	golang.org/x/tools v0.1.5
+	google.golang.org/genproto v0.0.0-20211208223120-3a66f561d7aa
+	google.golang.org/grpc v1.42.0
+	google.golang.org/grpc/examples v0.0.0-20220107192653-77b478d768e7 // indirect
+	google.golang.org/protobuf v1.27.1
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
-	gopkg.in/ini.v1 v1.62.0
+	gopkg.in/ini.v1 v1.66.2
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.20.1
