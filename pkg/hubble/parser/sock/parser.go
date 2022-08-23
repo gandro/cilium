@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 
 	"github.com/cilium/cilium/pkg/hubble/parser/common"
 
@@ -25,13 +26,14 @@ import (
 
 // Parser is a parser for SockTraceNotify payloads
 type Parser struct {
-	log            logrus.FieldLogger
-	endpointGetter getters.EndpointGetter
-	identityGetter getters.IdentityGetter
-	dnsGetter      getters.DNSGetter
-	ipGetter       getters.IPGetter
-	serviceGetter  getters.ServiceGetter
-	epResolver     *common.EndpointResolver
+	log               logrus.FieldLogger
+	endpointGetter    getters.EndpointGetter
+	identityGetter    getters.IdentityGetter
+	dnsGetter         getters.DNSGetter
+	ipGetter          getters.IPGetter
+	serviceGetter     getters.ServiceGetter
+	podMetadataGetter getters.PodMetadataGetter
+	epResolver        *common.EndpointResolver
 }
 
 // New creates a new parser
@@ -41,15 +43,16 @@ func New(log logrus.FieldLogger,
 	dnsGetter getters.DNSGetter,
 	ipGetter getters.IPGetter,
 	serviceGetter getters.ServiceGetter,
-) (*Parser, error) {
+	podMetadataGetter getters.PodMetadataGetter) (*Parser, error) {
 	return &Parser{
-		log:            log,
-		endpointGetter: endpointGetter,
-		identityGetter: identityGetter,
-		dnsGetter:      dnsGetter,
-		ipGetter:       ipGetter,
-		serviceGetter:  serviceGetter,
-		epResolver:     common.NewEndpointResolver(log, endpointGetter, identityGetter, ipGetter),
+		log:               log,
+		endpointGetter:    endpointGetter,
+		identityGetter:    identityGetter,
+		dnsGetter:         dnsGetter,
+		ipGetter:          ipGetter,
+		serviceGetter:     serviceGetter,
+		podMetadataGetter: podMetadataGetter,
+		epResolver:        common.NewEndpointResolver(log, endpointGetter, identityGetter, ipGetter),
 	}, nil
 }
 
@@ -77,6 +80,8 @@ func (p *Parser) Decode(data []byte, decoded *pb.Flow) error {
 	var ipVersion pb.IPVersion
 
 	dstIP, ipVersion = decodeDstIP(sock)
+	srcIP = p.decodeSrcIP(sock.CgroupId, ipVersion)
+
 	dstPort = byteorder.NetworkToHost16(sock.DstPort)
 
 	if isRevNat.GetValue() {
@@ -97,6 +102,22 @@ func (p *Parser) Decode(data []byte, decoded *pb.Flow) error {
 	decoded.EventType = decodeCiliumEventType(sock.Type, sock.XlatePoint)
 	decoded.SockXlatePoint = pb.SocketTranslationPoint(sock.XlatePoint)
 	decoded.IsReply = isRevNat
+	return nil
+}
+
+func (p *Parser) decodeSrcIP(cgroupId uint64, ipVersion pb.IPVersion) net.IP {
+	if p.podMetadataGetter != nil {
+		if m := p.podMetadataGetter.GetParentPodMetadata(cgroupId); m != nil {
+			for _, podIP := range m.IPs {
+				isIPv6 := strings.Contains(podIP.IP, ":")
+				if isIPv6 && ipVersion == pb.IPVersion_IPv6 ||
+					!isIPv6 && ipVersion == pb.IPVersion_IPv4 {
+					return net.ParseIP(podIP.IP)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 

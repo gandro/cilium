@@ -58,9 +58,9 @@ type Manager struct {
 }
 
 type PodMetadata struct {
-	name      string
-	namespace string
-	ips       []v1.PodIP
+	Name      string
+	Namespace string
+	IPs       []v1.PodIP
 }
 
 const (
@@ -361,10 +361,10 @@ func (m *Manager) getParentPodMetadata(cgroupId uint64, podMetadataOut chan *Pod
 		return
 	}
 	podMetadata := PodMetadata{
-		name:      pm.name,
-		namespace: pm.namespace,
+		Name:      pm.name,
+		Namespace: pm.namespace,
 	}
-	podMetadata.ips = append(podMetadata.ips, pm.ips...)
+	podMetadata.IPs = append(podMetadata.IPs, pm.ips...)
 	log.Debugf("Parent pod metadata for container (%d): %+v", cgroupId, podMetadata)
 
 	podMetadataOut <- &podMetadata

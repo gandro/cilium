@@ -41,6 +41,7 @@ func New(
 	ipGetter getters.IPGetter,
 	serviceGetter getters.ServiceGetter,
 	linkGetter getters.LinkGetter,
+	podMetadataGetter getters.PodMetadataGetter,
 	opts ...options.Option,
 ) (*Parser, error) {
 
@@ -59,7 +60,7 @@ func New(
 		return nil, err
 	}
 
-	sock, err := sock.New(log, endpointGetter, identityGetter, dnsGetter, ipGetter, serviceGetter)
+	sock, err := sock.New(log, endpointGetter, identityGetter, dnsGetter, ipGetter, serviceGetter, podMetadataGetter)
 	if err != nil {
 		return nil, err
 	}
