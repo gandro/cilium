@@ -2,6 +2,6 @@
 declare -A hubble_sha256
 
 # renovate: datasource=github-releases depName=cilium/hubble versioning=semver
-hubble_version="v0.11.0"
-hubble_sha256[amd64]="f6dcda9aec0d4a4647f6b640684f96a52aa86e8963c38ec2fd9cdf37c47f2a3d"
+hubble_version="v0.11.1"
+hubble_sha256[amd64]="80dc54aaef4314de8ad64f5a95ae4d9067542defd69edd6a95574610a5c379bd"
 hubble_sha256[arm64]="62fc0032202a3dd7de62839c2735aed0c9ee3f42699bdb47ef2dcd1f018099f5"
