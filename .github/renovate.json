@@ -110,7 +110,8 @@
         "^images/cilium/hubble-version\\.sh$"
       ],
       "matchStrings": [
-        "hubble_version=\"(?<currentValue>.*)\"\\s+(hubble_sha256\\[.*\\]=\"(?<currentDigest>.*)\")+"
+        "hubble_version=\"(?<currentValue>.*)\"",
+        "hubble_sha256\\[.*\\]=\"(?<currentDigest>.*)\" #renovate: (?<currentValue>.*)"
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "cilium/hubble"
