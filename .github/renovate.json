@@ -107,10 +107,10 @@
   "regexManagers": [
     {
       "fileMatch": [
-        "images/cilium/hubble-version.sh"
+        "^images/cilium/hubble-version\\.sh$"
       ],
       "matchStrings": [
-        "hubble_version=\"(?<currentValue>.*)"
+        "hubble_version=\"(?<currentValue>.*)\""
       ],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "cilium/hubble"
