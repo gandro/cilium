@@ -114,19 +114,11 @@
   "regexManagers": [
     {
       "fileMatch": [
-        "images/cilium/hubble-version\\.sh"
+        "images/cilium/download-hubble\\.sh"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+.+_version=\"(?<currentValue>.*)\"",
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?) digestVersion=(?<currentValue>.*)\\s+.+_sha256.*=\"(?<currentDigest>.*)\""
-      ]
-    },
-    {
-      "fileMatch": [
-        "xxexamples/hubble/hubble-cli\\.yaml"
-      ],
-      "matchStrings": [
-        "xxx# renovate: datasource=(?<datasource>.*?)\\s+image: (?<depName>.*?):(?<currentValue>.*?)\\s+"
       ]
     }
   ]

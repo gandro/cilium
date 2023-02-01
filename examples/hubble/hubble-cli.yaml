@@ -17,7 +17,6 @@ spec:
     spec:
       containers:
       - name: hubble-cli
-        # renovate: datasource=docker
         image: quay.io/cilium/hubble:v0.10.0
         imagePullPolicy: IfNotPresent
         command:
