@@ -119,7 +119,7 @@
         "examples/hubble/hubble-cli\\.yaml"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?)\\image: (?<depName>.*?):(?<currentValue>.*?)\\s+"
+        "# renovate: datasource=(?<datasource>.*?)\\s+image: (?<depName>.*?):(?<currentValue>.*?)\\s+"
       ]
     }
   ]
