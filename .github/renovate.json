@@ -4,7 +4,7 @@
     "config:base",
     ":gitSignOff"
   ],
-  "includePaths": ["images/**"],
+  "includePaths": ["images/**", "examples/hubble/*"],
   "ignorePresets": [":prHourlyLimit2"],
   "separateMajorMinor": true,
   "separateMultipleMajor": true,
