@@ -9,7 +9,7 @@ set -o pipefail
 set -o nounset
 
 # renovate: datasource=github-releases depName=cilium/hubble
-hubble_version="v0.11.0"
+hubble_version="v0.11.1"
 
 declare -A hubble_sha256
 # renovate: datasource=github-releases depName=cilium/hubble digestVersion=v0.10.0
