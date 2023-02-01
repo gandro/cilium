@@ -31,14 +31,6 @@
     },
     {
       "matchPackageNames": [
-        "quay.io/cilium/hubble"
-      ],
-      "matchFiles": [
-        "examples/hubble/hubble-cli.yaml"
-      ]
-    },
-    {
-      "matchPackageNames": [
         "docker.io/library/ubuntu"
       ],
       "allowedVersions": "22.04",
@@ -112,10 +104,13 @@
       ]
     }
   ],
+  "kubernetes": {
+    "fileMatch": ["examples/hubble/hubble-cli\\.yaml"]
+  },
   "regexManagers": [
     {
       "fileMatch": [
-        "^images/cilium/hubble-version\\.sh$"
+        "images/cilium/hubble-version\\.sh"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>.*?) depName=(?<depName>.*?)\\s+.+_version=\"(?<currentValue>.*)\"",
@@ -123,4 +118,5 @@
       ]
     }
   ]
+
 }
