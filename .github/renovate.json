@@ -104,6 +104,9 @@
       ]
     }
   ],
+  "kubernetes": {
+    "fileMatch": ["examples/hubble/hubble-cli\\.yaml"]
+  },
   "regexManagers": [
     {
       "fileMatch": [
@@ -116,12 +119,11 @@
     },
     {
       "fileMatch": [
-        "examples/hubble/hubble-cli\\.yaml"
+        "xxexamples/hubble/hubble-cli\\.yaml"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>.*?)\\s+image: (?<depName>.*?):(?<currentValue>.*?)\\s+"
+        "xxx# renovate: datasource=(?<datasource>.*?)\\s+image: (?<depName>.*?):(?<currentValue>.*?)\\s+"
       ]
     }
   ]
-
 }
