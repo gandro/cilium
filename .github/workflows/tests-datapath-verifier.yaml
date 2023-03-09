@@ -161,7 +161,7 @@ jobs:
           persist-credentials: false
 
       - name: Provision LVH VMs
-        uses: cilium/little-vm-helper@c3dbeb9d505b31aa5e960ebb258f4dd5f96f0202
+        uses: cilium/little-vm-helper@00fdc70eec2a41e08bd27b2eb510872034d97d68
         with:
           test-name: datapath-bpf-complexity
           image-version: ${{ matrix.kernel }}
@@ -173,7 +173,7 @@ jobs:
             git config --global --add safe.directory /host
 
       - name: Run verifier tests
-        uses: cilium/little-vm-helper@2a076423707ff588c2b0ed676d835e779b4c4af4
+        uses: cilium/little-vm-helper@00fdc70eec2a41e08bd27b2eb510872034d97d68
         with:
           provision: 'false'
           cmd: |
@@ -189,7 +189,7 @@ jobs:
 
       - name: Fetch artifacts
         if: ${{ !success() }}
-        uses: cilium/little-vm-helper@c3dbeb9d505b31aa5e960ebb258f4dd5f96f0202
+        uses: cilium/little-vm-helper@00fdc70eec2a41e08bd27b2eb510872034d97d68
         with:
           provision: 'false'
           cmd: |
