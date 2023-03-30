@@ -260,11 +260,11 @@ restart:
 			//   the deletion event.
 			switch event.Typ {
 			case kvstore.EventTypeListDone:
-				iw.ipcache.Lock()
+				iw.ipcache.lock()
 				for _, listener := range iw.ipcache.listeners {
 					listener.OnIPIdentityCacheGC()
 				}
-				iw.ipcache.Unlock()
+				iw.ipcache.lock()
 				iw.closeSynced()
 
 			case kvstore.EventTypeCreate, kvstore.EventTypeModify:
@@ -372,7 +372,7 @@ func (iw *IPIdentityWatcher) Close() {
 	})
 }
 
-//closeSynced the IPIdentityWathcer and case panic
+// closeSynced the IPIdentityWathcer and case panic
 func (iw *IPIdentityWatcher) closeSynced() {
 	iw.syncedOnce.Do(func() {
 		close(iw.synced)

@@ -198,8 +198,8 @@ func (ipc *IPCache) InjectLabels(src source.Source) error {
 		ipc.UpdatePolicyMaps(context.TODO(), idsToPropagate, nil)
 	}
 
-	ipc.mutex.Lock()
-	defer ipc.mutex.Unlock()
+	ipc.lock()
+	defer ipc.unlock()
 	for ip, id := range toUpsert {
 		hIP, key := ipc.getHostIPCache(ip)
 		meta := ipc.getK8sMetadata(ip)
@@ -363,8 +363,8 @@ func (ipc *IPCache) removeLabelsFromIPs(
 		toReplace = make(map[string]Identity)
 	)
 
-	ipc.Lock()
-	defer ipc.Unlock()
+	ipc.lock()
+	defer ipc.unlock()
 
 	for prefix, lbls := range m {
 		id, exists := ipc.LookupByIPRLocked(prefix)
@@ -410,9 +410,16 @@ func (ipc *IPCache) removeLabelsFromIPs(
 			}
 		}
 	}
+	ipc.reading.UnlockToRLock()
 	if len(idsToDelete) > 0 {
 		ipc.UpdatePolicyMaps(context.TODO(), idsToAdd, idsToDelete)
 	}
+
+	// This is lock upgrade is fine, because we hold on to ipc.updating,
+	// so no one will be able to acquire a write-lock on ipc.reading
+	ipc.reading.RUnlock()
+	ipc.reading.Lock()
+
 	for ip, id := range toReplace {
 		hIP, key := ipc.getHostIPCache(ip)
 		meta := ipc.getK8sMetadata(ip)

@@ -5,6 +5,7 @@ package ipcache
 
 import (
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -62,11 +63,25 @@ type Configuration struct {
 }
 
 // IPCache is a collection of mappings:
-// - mapping of endpoint IP or CIDR to security identities of all endpoints
-//   which are part of the same cluster, and vice-versa
-// - mapping of endpoint IP or CIDR to host IP (maybe nil)
+//   - mapping of endpoint IP or CIDR to security identities of all endpoints
+//     which are part of the same cluster, and vice-versa
+//   - mapping of endpoint IP or CIDR to host IP (maybe nil)
 type IPCache struct {
-	mutex             lock.SemaphoredMutex
+	// 'updating' and 'reading' both protect the mappings below. When writing to the
+	// data structures, both 'updating' and 'reading' must be write-locked, with
+	// the 'updating' mutex being acquired first and released last.
+	// When performing read-only access to IPCache, only the RLock on 'reading'
+	// needs to be acquired.
+	// While the 'updating' mutex is held, it is allowed to temporarily release
+	// the 'reading' write-lock and later re-acquire the 'reading' write-lock
+	// again.
+	// This allows other entities to obtain an RLock to perform read-only access
+	// on IPCache while an update is in progress.
+	// Notably however, it is _never_ allowed to acquire a reading write-lock
+	// without first acquiring the updating write-lock.
+	updating lock.Mutex
+	reading  lock.SemaphoredMutex
+
 	ipToIdentityCache map[string]Identity
 	identityToIPCache map[identity.NumericIdentity]map[string]struct{}
 	ipToHostIPCache   map[string]IPKeyPair
@@ -77,18 +92,17 @@ type IPCache struct {
 	// controllers manages the async controllers for this IPCache
 	controllers *controller.Manager
 
-	// needNamedPorts is initially 'false', but will be changd to 'true' when the
+	// needNamedPorts is initially '0', but will be atomically changed to '1' when the
 	// clusterwide named port mappings are needed for network policy computation
 	// for the first time. This avoids the overhead of maintaining 'namedPorts' map
 	// when it is known not to be needed.
-	// Protected by 'mutex'.
-	needNamedPorts bool
+	needNamedPorts int32
 
 	// namedPorts is a collection of all named ports in the cluster. This is needed
 	// only if an egress policy refers to a port by name.
 	// This map is returned to users so all updates must be made into a fresh map that
-	// is then swapped in place while 'mutex' is being held.
-	namedPorts policy.NamedPortMultiMap
+	// is then swapped in place using an atomic operation.
+	namedPorts atomic.Value // of policy.NamedPortMultiMap
 
 	// k8sSyncedChecker knows how to check for whether the K8s watcher cache
 	// has been fully synced.
@@ -111,13 +125,14 @@ type IPCache struct {
 // identity (and vice-versa) initialized.
 func NewIPCache(c *Configuration) *IPCache {
 	ipc := &IPCache{
-		mutex:             lock.NewSemaphoredMutex(),
+		updating:          lock.Mutex{},
+		reading:           lock.NewSemaphoredMutex(),
 		ipToIdentityCache: map[string]Identity{},
 		identityToIPCache: map[identity.NumericIdentity]map[string]struct{}{},
 		ipToHostIPCache:   map[string]IPKeyPair{},
 		ipToK8sMetadata:   map[string]K8sMetadata{},
 		controllers:       controller.NewManager(),
-		namedPorts:        nil,
+		namedPorts:        atomic.Value{},
 		metadata:          newMetadata(),
 		Configuration:     c,
 	}
@@ -125,45 +140,51 @@ func NewIPCache(c *Configuration) *IPCache {
 	return ipc
 }
 
-// Lock locks the IPCache's mutex.
-func (ipc *IPCache) Lock() {
-	ipc.mutex.Lock()
+// lock acquires the IPCache update write lock.
+func (ipc *IPCache) lock() {
+	ipc.updating.Lock()
+	ipc.reading.Lock()
 }
 
-// Unlock unlocks the IPCache's mutex.
-func (ipc *IPCache) Unlock() {
-	ipc.mutex.Unlock()
+// unlock releases the IPCache update lock
+func (ipc *IPCache) unlock() {
+	ipc.reading.Unlock()
+	ipc.updating.Unlock()
 }
 
 // RLock RLocks the IPCache's mutex.
 func (ipc *IPCache) RLock() {
-	ipc.mutex.RLock()
+	ipc.reading.RLock()
 }
 
 // RUnlock RUnlocks the IPCache's mutex.
 func (ipc *IPCache) RUnlock() {
-	ipc.mutex.RUnlock()
+	ipc.reading.RUnlock()
 }
 
 // SetListeners sets the listeners for this IPCache.
 func (ipc *IPCache) SetListeners(listeners []IPIdentityMappingListener) {
-	ipc.mutex.Lock()
+	ipc.lock()
 	ipc.listeners = listeners
-	ipc.mutex.Unlock()
+	ipc.unlock()
 }
 
 // AddListener adds a listener for this IPCache.
 func (ipc *IPCache) AddListener(listener IPIdentityMappingListener) {
 	// We need to acquire the semaphored mutex as we Write Lock as we are
 	// modifying the listeners slice.
-	ipc.mutex.Lock()
+	ipc.updating.Lock()
+	ipc.reading.Lock()
 	ipc.listeners = append(ipc.listeners, listener)
 	// We will release the semaphore mutex with UnlockToRLock, *and not Unlock*
 	// because want to prevent a race across an Upsert or Delete. By doing this
 	// we are sure no other writers are performing any operation while we are
 	// still reading.
-	ipc.mutex.UnlockToRLock()
-	defer ipc.mutex.RUnlock()
+	ipc.reading.UnlockToRLock()
+	defer func() {
+		ipc.reading.RUnlock()
+		ipc.updating.Lock()
+	}()
 	// Initialize new listener with the current mappings
 	ipc.DumpToListenerLocked(listener)
 }
@@ -193,8 +214,8 @@ func (ipc *IPCache) getHostIPCache(ip string) (net.IP, uint8) {
 // GetK8sMetadata returns Kubernetes metadata for the given IP address.
 // The returned pointer should *never* be modified.
 func (ipc *IPCache) GetK8sMetadata(ip string) *K8sMetadata {
-	ipc.mutex.RLock()
-	defer ipc.mutex.RUnlock()
+	ipc.reading.RLock()
+	defer ipc.reading.RUnlock()
 	return ipc.getK8sMetadata(ip)
 }
 
@@ -207,12 +228,19 @@ func (ipc *IPCache) getK8sMetadata(ip string) *K8sMetadata {
 }
 
 // updateNamedPorts accumulates named ports from all K8sMetadata entries to a single map
-func (ipc *IPCache) updateNamedPorts() (namedPortsChanged bool) {
-	if !ipc.needNamedPorts {
+func (ipc *IPCache) updateNamedPortsRLocked() (namedPortsChanged bool) {
+	if atomic.LoadInt32(&ipc.needNamedPorts) == 0 {
 		return false
 	}
-	// Collect new named Ports
-	npm := make(policy.NamedPortMultiMap, len(ipc.namedPorts))
+
+	var oldLen = 0
+	var old policy.NamedPortMultiMap
+	if m, ok := ipc.namedPorts.Load().(policy.NamedPortMultiMap); ok {
+		old = m
+		oldLen = len(old)
+	}
+
+	npm := make(policy.NamedPortMultiMap, oldLen)
 	for _, km := range ipc.ipToK8sMetadata {
 		for name, port := range km.NamedPorts {
 			if npm[name] == nil {
@@ -221,14 +249,10 @@ func (ipc *IPCache) updateNamedPorts() (namedPortsChanged bool) {
 			npm[name][port] = struct{}{}
 		}
 	}
-	namedPortsChanged = !npm.Equal(ipc.namedPorts)
+	namedPortsChanged = !npm.Equal(old)
 	if namedPortsChanged {
 		// swap the new map in
-		if len(npm) == 0 {
-			ipc.namedPorts = nil
-		} else {
-			ipc.namedPorts = npm
-		}
+		ipc.namedPorts.Store(npm)
 	}
 	return namedPortsChanged
 }
@@ -244,8 +268,8 @@ func (ipc *IPCache) updateNamedPorts() (namedPortsChanged bool) {
 // k8sMeta contains Kubernetes-specific metadata such as pod namespace and pod
 // name belonging to the IP (may be nil).
 func (ipc *IPCache) Upsert(ip string, hostIP net.IP, hostKey uint8, k8sMeta *K8sMetadata, newIdentity Identity) (namedPortsChanged bool, err error) {
-	ipc.mutex.Lock()
-	defer ipc.mutex.Unlock()
+	ipc.lock()
+	defer ipc.unlock()
 	return ipc.upsertLocked(ip, hostIP, hostKey, k8sMeta, newIdentity, false /* !force */)
 }
 
@@ -410,7 +434,7 @@ func (ipc *IPCache) upsertLocked(
 		if namedPortsChanged {
 			// It is possible that some other POD defines same values, check if
 			// anything changes over all the PODs.
-			namedPortsChanged = ipc.updateNamedPorts()
+			namedPortsChanged = ipc.updateNamedPortsRLocked()
 		}
 	}
 
@@ -549,7 +573,7 @@ func (ipc *IPCache) deleteLocked(ip string, source source.Source) (namedPortsCha
 	// Update named ports
 	namedPortsChanged = false
 	if oldK8sMeta != nil && len(oldK8sMeta.NamedPorts) > 0 {
-		namedPortsChanged = ipc.updateNamedPorts()
+		namedPortsChanged = ipc.updateNamedPortsRLocked()
 	}
 
 	if newHostIP != nil {
@@ -571,23 +595,24 @@ func (ipc *IPCache) deleteLocked(ip string, source source.Source) (namedPortsCha
 
 // GetNamedPorts returns a copy of the named ports map. May return nil.
 func (ipc *IPCache) GetNamedPorts() (npm policy.NamedPortMultiMap) {
-	ipc.mutex.Lock()
-	if !ipc.needNamedPorts {
-		ipc.needNamedPorts = true
-		ipc.updateNamedPorts()
+	ipc.reading.RLock()
+	defer ipc.reading.RUnlock()
+
+	if atomic.LoadInt32(&ipc.needNamedPorts) == 0 {
+		atomic.StoreInt32(&ipc.needNamedPorts, 1)
+		ipc.updateNamedPortsRLocked()
 	}
 	// Caller can keep using the map after the lock is released, as the map is never changed
 	// once published.
-	npm = ipc.namedPorts
-	ipc.mutex.Unlock()
+	npm, _ = ipc.namedPorts.Load().(policy.NamedPortMultiMap)
 	return npm
 }
 
 // DeleteOnMetadataMatch removes the provided IP to security identity mapping from the IPCache
 // if the metadata cache holds the same "owner" metadata as the triggering pod event.
 func (ipc *IPCache) DeleteOnMetadataMatch(IP string, source source.Source, namespace, name string) (namedPortsChanged bool) {
-	ipc.mutex.Lock()
-	defer ipc.mutex.Unlock()
+	ipc.lock()
+	defer ipc.unlock()
 	k8sMeta := ipc.getK8sMetadata(IP)
 	if k8sMeta != nil && k8sMeta.Namespace == namespace && k8sMeta.PodName == name {
 		return ipc.deleteLocked(IP, source)
@@ -597,8 +622,8 @@ func (ipc *IPCache) DeleteOnMetadataMatch(IP string, source source.Source, names
 
 // Delete removes the provided IP-to-security-identity mapping from the IPCache.
 func (ipc *IPCache) Delete(IP string, source source.Source) (namedPortsChanged bool) {
-	ipc.mutex.Lock()
-	defer ipc.mutex.Unlock()
+	ipc.lock()
+	defer ipc.unlock()
 	return ipc.deleteLocked(IP, source)
 }
 
@@ -606,8 +631,8 @@ func (ipc *IPCache) Delete(IP string, source source.Source) (namedPortsChanged b
 // to within the provided IPCache, as well as if the corresponding entry exists
 // in the IPCache.
 func (ipc *IPCache) LookupByIP(IP string) (Identity, bool) {
-	ipc.mutex.RLock()
-	defer ipc.mutex.RUnlock()
+	ipc.reading.RLock()
+	defer ipc.reading.RUnlock()
 	return ipc.LookupByIPRLocked(IP)
 }
 
@@ -643,16 +668,16 @@ func (ipc *IPCache) LookupByPrefixRLocked(prefix string) (identity Identity, exi
 // maps to within the provided IPCache, as well as if the corresponding entry
 // exists in the IPCache.
 func (ipc *IPCache) LookupByPrefix(IP string) (Identity, bool) {
-	ipc.mutex.RLock()
-	defer ipc.mutex.RUnlock()
+	ipc.reading.RLock()
+	defer ipc.reading.RUnlock()
 	return ipc.LookupByPrefixRLocked(IP)
 }
 
 // LookupByIdentity returns the set of IPs (endpoint or CIDR prefix) that have
 // security identity ID, or nil if the entry does not exist.
 func (ipc *IPCache) LookupByIdentity(id identity.NumericIdentity) (ips []string) {
-	ipc.mutex.RLock()
-	defer ipc.mutex.RUnlock()
+	ipc.reading.RLock()
+	defer ipc.reading.RUnlock()
 	// Can't return the internal map as it may be modified at any time when the
 	// lock is not held, so return a slice of strings instead
 	length := len(ipc.identityToIPCache[id])

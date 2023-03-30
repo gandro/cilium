@@ -49,7 +49,7 @@ func (ipc *IPCache) AllocateCIDRs(
 	}
 
 	ipc.metadata.RLock()
-	ipc.Lock()
+	ipc.lock()
 	allocatedIdentities := make(map[string]*identity.Identity, len(prefixes))
 	for i, p := range prefixes {
 		if p == nil {
@@ -65,7 +65,7 @@ func (ipc *IPCache) AllocateCIDRs(
 		id, isNew, err := ipc.allocate(p, lbls, oldNID)
 		if err != nil {
 			ipc.IdentityAllocator.ReleaseSlice(context.Background(), nil, usedIdentities)
-			ipc.Unlock()
+			ipc.unlock()
 			ipc.metadata.RUnlock()
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func (ipc *IPCache) AllocateCIDRs(
 			newlyAllocatedIdentities[prefixStr] = id
 		}
 	}
-	ipc.Unlock()
+	ipc.unlock()
 	ipc.metadata.RUnlock()
 
 	// Only upsert into ipcache if identity wasn't allocated
@@ -128,7 +128,7 @@ func (ipc *IPCache) UpsertGeneratedIdentities(newlyAllocatedIdentities map[strin
 	}
 
 	toUpsert := make(map[string]*identity.Identity)
-	ipc.mutex.RLock()
+	ipc.reading.RLock()
 	for _, id := range usedIdentities {
 		prefix, ok := cidrLabelToPrefix(id.CIDRLabel.String())
 		if !ok {
@@ -143,7 +143,7 @@ func (ipc *IPCache) UpsertGeneratedIdentities(newlyAllocatedIdentities map[strin
 		}
 		toUpsert[prefix] = id
 	}
-	ipc.mutex.RUnlock()
+	ipc.reading.RUnlock()
 	for prefix, id := range toUpsert {
 		metrics.IPCacheErrorsTotal.WithLabelValues(
 			metricTypeRecover, metricErrorUnexpected,
@@ -203,8 +203,8 @@ func (ipc *IPCache) releaseCIDRIdentities(ctx context.Context, prefixes []string
 	// In this case, the expectation from Goroutine 2 is that an identity
 	// is allocated and that identity is in the ipcache, but the result
 	// is that the identity is allocated but the ipcache entry is missing.
-	ipc.Lock()
-	defer ipc.Unlock()
+	ipc.lock()
+	defer ipc.unlock()
 
 	toDelete := make([]string, 0, len(prefixes))
 	for _, prefix := range prefixes {
