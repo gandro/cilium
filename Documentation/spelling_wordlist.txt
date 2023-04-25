@@ -291,6 +291,7 @@ clockProbe
 cls
 clusterDomain
 clusterPoolIPv
+clusterPoolMap
 clusterSize
 clustermesh
 clustermeshcertgen
