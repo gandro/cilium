@@ -31,6 +31,7 @@ import (
 	"github.com/cilium/cilium/api/v1/server/restapi/endpoint"
 	"github.com/cilium/cilium/api/v1/server/restapi/ipam"
 	"github.com/cilium/cilium/api/v1/server/restapi/metrics"
+	"github.com/cilium/cilium/api/v1/server/restapi/network"
 	"github.com/cilium/cilium/api/v1/server/restapi/policy"
 	"github.com/cilium/cilium/api/v1/server/restapi/prefilter"
 	"github.com/cilium/cilium/api/v1/server/restapi/recorder"
@@ -89,6 +90,7 @@ type serverParams struct {
 	DaemonGetMapNameHandler              daemon.GetMapNameHandler
 	DaemonGetMapNameEventsHandler        daemon.GetMapNameEventsHandler
 	MetricsGetMetricsHandler             metrics.GetMetricsHandler
+	NetworkGetNetworkAttachmentHandler   network.GetNetworkAttachmentHandler
 	DaemonGetNodeIdsHandler              daemon.GetNodeIdsHandler
 	PolicyGetPolicyHandler               policy.GetPolicyHandler
 	PolicyGetPolicySelectorsHandler      policy.GetPolicySelectorsHandler
@@ -147,6 +149,7 @@ func newForCell(p serverParams) (*Server, error) {
 	api.DaemonGetMapNameHandler = p.DaemonGetMapNameHandler
 	api.DaemonGetMapNameEventsHandler = p.DaemonGetMapNameEventsHandler
 	api.MetricsGetMetricsHandler = p.MetricsGetMetricsHandler
+	api.NetworkGetNetworkAttachmentHandler = p.NetworkGetNetworkAttachmentHandler
 	api.DaemonGetNodeIdsHandler = p.DaemonGetNodeIdsHandler
 	api.PolicyGetPolicyHandler = p.PolicyGetPolicyHandler
 	api.PolicyGetPolicySelectorsHandler = p.PolicyGetPolicySelectorsHandler
