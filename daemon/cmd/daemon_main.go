@@ -1958,6 +1958,8 @@ func (d *Daemon) instantiateAPI(swaggerSpec *server.Spec) *restapi.CiliumAPIAPI 
 		restAPI.IpamPostIpamHandler = NewPostIPAMHandler(d)
 		restAPI.IpamPostIpamIPHandler = NewPostIPAMIPHandler(d)
 		restAPI.IpamDeleteIpamIPHandler = NewDeleteIPAMIPHandler(d)
+
+		restAPI.NetworkGetNetworkAttachmentHandler = NewGetNetworkAttachmentHandler(d)
 	}
 
 	// /debuginfo
