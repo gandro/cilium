@@ -6,7 +6,6 @@ package policy
 import (
 	"bytes"
 	"encoding/json"
-	"net/netip"
 	"sort"
 	"strings"
 	"sync"
@@ -154,34 +153,17 @@ type selectorSource interface {
 // any of the labels in wantLabels is selected. Unlike the identitySelector, this selector
 // is "mutable" in that the FQDN subsystem may update the set of matched labels arbitrarily.
 type fqdnSelector struct {
-	selector   api.FQDNSelector
-	wantLabels labels.LabelArray // MUST be sorted
+	selector api.FQDNSelector
 }
 
 func (f *fqdnSelector) remove(dnsProxy identityNotifier) {
 	dnsProxy.UnregisterForIPUpdatesLocked(f.selector)
 }
 
-// setSelectorIPs updates the set of desired labels associated with this selector.
-// lock must be held
-func (f *fqdnSelector) setSelectorIPs(ips []netip.Addr) {
-	lbls := make(labels.LabelArray, 0, len(ips))
-	for _, ip := range ips {
-		l, err := labels.IPStringToLabel(ip.String())
-		if err != nil {
-			// not possible
-			continue
-		}
-		lbls = append(lbls, l)
-	}
-	lbls.Sort()
-	f.wantLabels = lbls
-}
-
 // matches returns true if the identity contains at least one label
 // that is in wantLabels.
 func (f *fqdnSelector) matches(identity scIdentity) bool {
-	return identity.lbls.Intersects(f.wantLabels)
+	return identity.lbls.Intersects(labels.LabelArray{f.selector.IdentityLabel()})
 }
 
 type labelIdentitySelector struct {

@@ -87,6 +87,56 @@ func (n *NameManager) mapSelectorsToIPsLocked(fqdnSelectors sets.Set[api.FQDNSel
 	return selectorIPMapping
 }
 
+func (n *NameManager) mapSelectorsToNamesLocked(fqdnSelector api.FQDNSelector) (namesIPMapping map[string][]netip.Addr) {
+	namesIPMapping = make(map[string][]netip.Addr)
+
+	log.WithField("fqdnSelectors", fqdnSelector).Debug("mapSelectorsToNamesLocked")
+
+	// lookup matching DNS names
+	if len(fqdnSelector.MatchName) > 0 {
+		dnsName := prepareMatchName(fqdnSelector.MatchName)
+		lookupIPs := n.cache.Lookup(dnsName)
+
+		log.WithFields(logrus.Fields{
+			"DNSName":   dnsName,
+			"IPs":       lookupIPs,
+			"matchName": fqdnSelector.MatchName,
+		}).Debug("Emitting matching DNS Name -> IPs for FQDNSelector")
+		namesIPMapping[dnsName] = lookupIPs
+	}
+
+	if len(fqdnSelector.MatchPattern) > 0 {
+		// lookup matching DNS names
+		dnsPattern := matchpattern.Sanitize(fqdnSelector.MatchPattern)
+		patternREStr := matchpattern.ToAnchoredRegexp(dnsPattern)
+		var (
+			err       error
+			patternRE *regexp.Regexp
+		)
+
+		if patternRE, err = re.CompileRegex(patternREStr); err != nil {
+			log.WithError(err).Error("Error compiling matchPattern")
+		}
+		lookupIPs := n.cache.LookupByRegexp(patternRE)
+
+		for dnsName, ips := range lookupIPs {
+			if len(ips) > 0 {
+				if log.Logger.IsLevelEnabled(logrus.DebugLevel) {
+					log.WithFields(logrus.Fields{
+						"DNSName":      dnsName,
+						"IPs":          ips,
+						"matchPattern": fqdnSelector.MatchPattern,
+					}).Debug("Emitting matching DNS Name -> IPs for FQDNSelector")
+				}
+
+				namesIPMapping[dnsName] = append(namesIPMapping[dnsName], ips...)
+			}
+		}
+	}
+
+	return namesIPMapping
+}
+
 // prepareMatchName ensures a ToFQDNs.matchName field is used consistently.
 func prepareMatchName(matchName string) string {
 	return dns.FQDN(matchName)

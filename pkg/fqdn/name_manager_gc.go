@@ -14,8 +14,11 @@ import (
 
 	"github.com/cilium/cilium/pkg/controller"
 	"github.com/cilium/cilium/pkg/fqdn/matchpattern"
+	"github.com/cilium/cilium/pkg/ipcache"
+	ipcacheTypes "github.com/cilium/cilium/pkg/ipcache/types"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/metrics"
+	"github.com/cilium/cilium/pkg/source"
 	"github.com/cilium/cilium/pkg/time"
 )
 
@@ -245,9 +248,40 @@ func (n *NameManager) RestoreCache(preCachePath string, restoredEPs []EndpointDN
 			}
 		}
 	}
+}
+
+func (n *NameManager) RestoreIPCacheEntries() {
+	// TODO do we need to lock the cache
+	// TODO: PROBLEM, nameLabels will presumably always be empty here due to policies not loaded at this time
+	nameToIPs := n.cache.GetForwardIPs(time.Now())
+	ipCacheUpdates := make([]ipcache.MU, 0, len(nameToIPs))
+	for dnsName, lookupIPs := range nameToIPs {
+		nameLabels := n.deriveLabelsForName(dnsName)
+
+		res := ipcacheTypes.NewResourceID(ipcacheTypes.ResourceKindDaemon, "fqdn-name-manager", dnsName)
+		for _, addr := range lookupIPs {
+			ipCacheUpdates = append(ipCacheUpdates, ipcache.MU{
+				Prefix:   netip.PrefixFrom(addr, addr.BitLen()),
+				Source:   source.Generated,
+				Resource: res,
+				Metadata: []ipcache.IPMetadata{
+					nameLabels,
+				},
+			})
+			log.WithField("update", ipCacheUpdates[len(ipCacheUpdates)-1]).Debug("HERE: RestoreCache")
+		}
+	}
 
 	// Ensure there's a metadata entry for the fqdn subsystem in ipcache.
-	n.upsertMetadata(n.cache.GetIPs().UnsortedList())
+	// TODO(gandro): We intentionally don't wait for IPCache revision, like the previous iteration
+	var rev uint64
+	if len(ipCacheUpdates) > 0 {
+		log.WithField("updates", ipCacheUpdates).Debug("batch upsert")
+		rev = n.config.IPCache.UpsertMetadataBatch(ipCacheUpdates...)
+	}
+
+	n.config.IPCache.RestoreFinished()
+	n.config.IPCache.WaitForRevision(rev)
 }
 
 // readPreCache returns a fqdn.DNSCache object created from the json data at

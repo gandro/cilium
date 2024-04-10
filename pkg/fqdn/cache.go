@@ -11,6 +11,7 @@ import (
 	"sort"
 	"unsafe"
 
+	"golang.org/x/exp/maps"
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/cilium/cilium/pkg/fqdn/matchpattern"
@@ -580,15 +581,27 @@ func (c *DNSCache) removeReverse(ip netip.Addr, entry *cacheEntry) {
 	}
 }
 
-// GetIPs takes a snapshot of all IPs in the reverse cache.
-func (c *DNSCache) GetIPs() sets.Set[netip.Addr] {
+func (c *DNSCache) GetForwardIPs(now time.Time) map[string][]netip.Addr {
 	c.RWMutex.RLock()
 	defer c.RWMutex.RUnlock()
 
-	out := make(sets.Set[netip.Addr], len(c.reverse))
+	out := make(map[string][]netip.Addr, len(c.forward))
+	for name, ips := range c.forward {
+		out[name] = ips.getIPs(now)
+	}
 
-	for ip := range c.reverse {
-		out.Insert(ip)
+	return out
+}
+
+// GetIPs takes a snapshot of all IPs in the reverse cache.
+func (c *DNSCache) GetIPs() map[netip.Addr][]string {
+	c.RWMutex.RLock()
+	defer c.RWMutex.RUnlock()
+
+	out := make(map[netip.Addr][]string, len(c.reverse))
+
+	for ip, names := range c.reverse {
+		out[ip] = maps.Keys(names)
 	}
 
 	return out

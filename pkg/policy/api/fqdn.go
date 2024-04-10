@@ -10,6 +10,7 @@ import (
 
 	"github.com/cilium/cilium/pkg/fqdn/dns"
 	"github.com/cilium/cilium/pkg/fqdn/matchpattern"
+	"github.com/cilium/cilium/pkg/labels"
 )
 
 var (
@@ -72,6 +73,15 @@ func (s *FQDNSelector) String() string {
 	str.WriteString(mm)
 	str.WriteString(s.MatchPattern)
 	return str.String()
+}
+
+func (s *FQDNSelector) IdentityLabel() labels.Label {
+	match := s.MatchPattern
+	if s.MatchName != "" {
+		match = s.MatchName
+	}
+
+	return labels.NewLabel(match, "", labels.LabelSourceFQDN)
 }
 
 // sanitize for FQDNSelector is a little wonky. While we do more processing

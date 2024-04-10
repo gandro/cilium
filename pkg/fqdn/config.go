@@ -8,9 +8,8 @@ import (
 	"net/netip"
 	"sync"
 
-	ipcacheTypes "github.com/cilium/cilium/pkg/ipcache/types"
+	"github.com/cilium/cilium/pkg/ipcache"
 	"github.com/cilium/cilium/pkg/policy/api"
-	"github.com/cilium/cilium/pkg/source"
 )
 
 // Config is a simple configuration structure to set how pkg/fqdn subcomponents
@@ -44,6 +43,8 @@ type EndpointDNSInfo struct {
 }
 
 type IPCache interface {
-	UpsertPrefixes(prefixes []netip.Prefix, src source.Source, resource ipcacheTypes.ResourceID) uint64
-	RemovePrefixes(prefixes []netip.Prefix, src source.Source, resource ipcacheTypes.ResourceID)
+	UpsertMetadataBatch(updates ...ipcache.MU) (revision uint64)
+	RemoveMetadataBatch(updates ...ipcache.MU) (revision uint64)
+	WaitForRevision(rev uint64)
+	RestoreFinished()
 }

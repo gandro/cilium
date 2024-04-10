@@ -318,6 +318,7 @@ func (d *Daemon) releaseRestoredIdentities() {
 	for prefix, nid := range d.restoredCIDRs {
 		nids = append(nids, nid)
 		updates = append(updates, ipcache.MU{
+			//Source: source.Restored,
 			Prefix:   prefix,
 			Resource: restoredCIDRResource,
 			Metadata: []ipcache.IPMetadata{
@@ -325,6 +326,8 @@ func (d *Daemon) releaseRestoredIdentities() {
 				labels.Labels{},                   // remove labels, if present
 			},
 		})
+		log.WithField(logfields.CIDR, prefix).Info("Removing identity reservations for restored CIDR identities")
+
 	}
 
 	d.ipcache.RemoveMetadataBatch(updates...)

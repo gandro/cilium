@@ -1745,6 +1745,8 @@ func startDaemon(d *Daemon, restoredEndpoints *endpointRestoreState, cleaner *da
 	bootstrapStats.k8sInit.End(true)
 	d.initRestore(restoredEndpoints, params.EndpointRegenerator)
 
+	d.dnsNameManager.RestoreIPCacheEntries()
+
 	bootstrapStats.enableConntrack.Start()
 	log.Info("Starting connection tracking garbage collector")
 	params.CTNATMapGC.Enable()

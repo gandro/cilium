@@ -243,7 +243,7 @@ type identityNotifier interface {
 	// updates to the selectors should be made via `UpdateFQDNSelector`.
 	//
 	// This function returns the set of IPs for which this selector already applies.
-	RegisterForIPUpdatesLocked(selector api.FQDNSelector) []netip.Addr
+	RegisterForIPUpdatesLocked(selector api.FQDNSelector) uint64
 
 	// UnregisterForIPUpdatesLocked removes this FQDNSelector from the set of
 	// FQDNSelectors which are being tracked by the identityNotifier. The result
@@ -307,14 +307,11 @@ func (sc *SelectorCache) updateFQDNSelector(fqdnSelec api.FQDNSelector, ips []ne
 		log.WithField(logfields.Selector, fqdnSelec.String()).Error("UpdateFQDNSelector of selector not registered in SelectorCache!")
 	}
 
-	fqdnSelect, ok := idSelector.source.(*fqdnSelector)
+	_, ok := idSelector.source.(*fqdnSelector)
 	if !ok {
 		log.Error("UpdateFQDNSelector for non-FQDN selector!")
 		return UpdateResultUnchanged
 	}
-
-	// update wantLabels, then determine set of added and removed identities
-	fqdnSelect.setSelectorIPs(ips) // this updates wantLabels
 
 	// Note that 'added' and 'deleted' are guaranteed to be
 	// disjoint, as one of them is left as nil, or an identity
@@ -351,9 +348,9 @@ func (sc *SelectorCache) updateFQDNSelector(fqdnSelec api.FQDNSelector, ips []ne
 	//
 	// This assumes we should have a 1:1 mapping from label to IPs, which is currently the case.
 	// If this changes, this conditional will be wrong.
-	if len(idSelector.cachedSelections) != len(fqdnSelect.wantLabels) {
-		result |= UpdateResultIdentitiesNeeded
-	}
+	//if len(idSelector.cachedSelections) != len(fqdnSelect.wantLabels) {
+	//	result |= UpdateResultIdentitiesNeeded
+	//}
 
 	idSelector.updateSelections()
 
@@ -384,6 +381,11 @@ func (sc *SelectorCache) AddFQDNSelector(user CachedSelectionUser, lbls labels.L
 
 	// If the selector already exists, use it.
 	idSel, exists := sc.selectors[key]
+	log.WithFields(logrus.Fields{
+		"sel":    key,
+		"exists": exists,
+	}).Debug("AddFQDNSelector")
+
 	if exists {
 		return idSel, idSel.addUser(user)
 	}
@@ -394,8 +396,7 @@ func (sc *SelectorCache) AddFQDNSelector(user CachedSelectionUser, lbls labels.L
 
 	// Make the FQDN subsystem aware of this selector and fetch ips
 	// that the FQDN subsystem is aware of.
-	currentIPs := sc.localIdentityNotifier.RegisterForIPUpdatesLocked(source.selector)
-	source.setSelectorIPs(currentIPs)
+	sc.localIdentityNotifier.RegisterForIPUpdatesLocked(source.selector)
 
 	return sc.addSelector(user, lbls, key, source)
 }

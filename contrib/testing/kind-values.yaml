@@ -6,3 +6,5 @@ operator:
     override: "localhost:5000/cilium/operator-generic:local"
     pullPolicy: Never
     suffix: ""
+envoy:
+  enabled: false

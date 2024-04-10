@@ -278,6 +278,10 @@ func (ipc *IPCache) InjectLabels(ctx context.Context, modifiedPrefixes []netip.P
 		return modifiedPrefixes, errors.New("k8s cache not fully synced")
 	}
 
+	if !ipc.startInjection.Load() {
+		return modifiedPrefixes, errors.New("restore not yet done")
+	}
+
 	type ipcacheEntry struct {
 		identity   Identity
 		tunnelPeer net.IP
@@ -316,6 +320,11 @@ func (ipc *IPCache) InjectLabels(ctx context.Context, modifiedPrefixes []netip.P
 		} else {
 			// Insert to propagate the updated set of labels after removal.
 			newID, isNew, err = ipc.resolveIdentity(ctx, prefix, prefixInfo, prefixInfo.RequestedIdentity().ID())
+			log.WithFields(logrus.Fields{
+				"prefix": prefix,
+				"id":     newID.ID,
+				"labels": newID.Labels,
+			}).Debug("HERE: resolveIdentity")
 			if err != nil {
 				// NOTE: This may fail during a 2nd or later
 				// iteration of the loop. To handle this, break
@@ -733,6 +742,8 @@ func (m *metadata) remove(prefix netip.Prefix, resource types.ResourceID, aux ..
 		delete(m.m, prefix)
 	}
 
+	log.WithField("prefix", prefix).WithField("info", info).Debug("HERE: remove")
+
 	return affected
 }
 
@@ -796,4 +807,9 @@ func (ipc *IPCache) TriggerLabelInjection() {
 		)
 	})
 	ipc.controllers.TriggerController(LabelInjectorName)
+}
+
+func (ipc *IPCache) RestoreFinished() {
+	ipc.startInjection.Store(true)
+	ipc.TriggerLabelInjection()
 }

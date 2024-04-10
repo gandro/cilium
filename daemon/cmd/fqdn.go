@@ -118,9 +118,9 @@ func (d *Daemon) updateSelectors(ctx context.Context, selectors map[policyApi.FQ
 // configured DNS proxy port (this may be 0 and so OS-assigned).
 func (d *Daemon) bootstrapFQDN(possibleEndpoints map[uint16]*endpoint.Endpoint, preCachePath string, ipcache fqdn.IPCache) (err error) {
 	cfg := fqdn.Config{
-		MinTTL:              option.Config.ToFQDNsMinTTL,
-		Cache:               fqdn.NewDNSCache(option.Config.ToFQDNsMinTTL),
-		UpdateSelectors:     d.updateSelectors,
+		MinTTL: option.Config.ToFQDNsMinTTL,
+		Cache:  fqdn.NewDNSCache(option.Config.ToFQDNsMinTTL),
+		//UpdateSelectors:     d.updateSelectors,
 		GetEndpointsDNSInfo: d.getEndpointsDNSInfo,
 		IPCache:             ipcache,
 	}
