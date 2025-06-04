@@ -62,12 +62,6 @@ var (
 	getNetnsCookie = true
 )
 
-// Cmd provides methods for the CNI ADD, DEL and CHECK commands.
-type Cmd struct {
-	logger *slog.Logger
-	cfg    EndpointConfigurator
-}
-
 // Option allows the customization of the Cmd implementation
 type Option func(cmd *Cmd)
 
@@ -78,28 +72,6 @@ type Option func(cmd *Cmd)
 func WithEPConfigurator(cfg EndpointConfigurator) Option {
 	return func(cmd *Cmd) {
 		cmd.cfg = cfg
-	}
-}
-
-// NewCmd creates a new Cmd instance with Add, Del and Check methods
-func NewCmd(logger *slog.Logger, opts ...Option) *Cmd {
-	cmd := &Cmd{
-		logger: logger,
-		cfg:    &DefaultConfigurator{},
-	}
-	for _, opt := range opts {
-		opt(cmd)
-	}
-	return cmd
-}
-
-// CNIFuncs returns the CNI functions supported by Cilium that can be passed to skel.PluginMainFuncs
-func (cmd *Cmd) CNIFuncs() skel.CNIFuncs {
-	return skel.CNIFuncs{
-		Add:    cmd.Add,
-		Del:    cmd.Del,
-		Check:  cmd.Check,
-		Status: cmd.Status,
 	}
 }
 
@@ -497,89 +469,166 @@ func configureCongestionControl(conf *models.DaemonConfigurationStatus, sysctl s
 	})
 }
 
-func (cmd *Cmd) Add(args *skel.CmdArgs) (err error) {
+type Cmd struct {
+	Logger      *slog.Logger
+	Args        *skel.CmdArgs
+	CniArgs     *types.ArgsSpec
+	NetConf     *types.NetConf
+	Client      *client.Client
+	CiliumConf  *models.DaemonConfigurationStatus
+	ChainAction chainingapi.ChainingPlugin
+
+	cfg EndpointConfigurator
+}
+
+func (cmd *Cmd) ChainedContext() chainingapi.PluginContext {
+	return chainingapi.PluginContext{
+		Logger:     cmd.Logger,
+		Args:       cmd.Args,
+		CniArgs:    cmd.CniArgs,
+		NetConf:    cmd.NetConf,
+		CiliumConf: cmd.CiliumConf,
+	}
+}
+
+type cmdOpt struct {
+	useCiliumClient bool
+	useCiliumConf   bool
+
+	requirePrevResultForChaining bool
+}
+
+func newCmd(args *skel.CmdArgs, opts cmdOpt) (*Cmd, error) {
+	logger := logging.DefaultSlogLogger.With(logfields.LogSubsys, "cilium-cni")
+
 	n, err := types.LoadNetConf(args.StdinData)
 	if err != nil {
-		return fmt.Errorf("unable to parse CNI configuration %q: %w", string(args.StdinData), err)
-	}
-
-	if err = setupLogging(n); err != nil {
-		return fmt.Errorf("unable to setup logging: %w", err)
-	}
-
-	scopedLogger := buildLogAttrsWithEventID(cmd.logger, args)
-
-	if n.EnableDebug {
-		if err := gops.Listen(gops.Options{}); err != nil {
-			scopedLogger.Warn("Unable to start gops", logfields.Error, err)
-		} else {
-			defer gops.Close()
-		}
-	}
-	scopedLogger.Debug(
-		"Processing CNI ADD request",
-		logfields.NetConf, n,
-	)
-
-	if n.PrevResult != nil {
-		scopedLogger.Debug(
-			"CNI Previous result",
-			logfields.Previous, n.PrevResult,
-		)
+		return nil, cniTypes.NewError(cniTypes.ErrInvalidNetworkConfig, "InvalidNetworkConfig",
+			fmt.Sprintf("unable to parse CNI configuration \"%s\": %v", string(args.StdinData), err))
 	}
 
 	cniArgs := &types.ArgsSpec{}
 	if err = cniTypes.LoadArgs(args.Args, cniArgs); err != nil {
-		return fmt.Errorf("unable to extract CNI arguments: %w", err)
-	}
-	scopedLogger = buildLogAttrsWithCNIArgs(scopedLogger, cniArgs)
-
-	c, err := client.NewDefaultClientWithTimeout(defaults.ClientConnectTimeout)
-	if err != nil {
-		return fmt.Errorf("unable to connect to Cilium agent: %w", client.Hint(err))
+		return nil, cniTypes.NewError(cniTypes.ErrInvalidNetworkConfig, "InvalidArgs",
+			fmt.Sprintf("unable to extract CNI arguments: %s", err))
 	}
 
-	conf, err := getConfigFromCiliumAgent(c)
-	if err != nil {
-		return err
+	if err = setupLogging(n); err != nil {
+		return nil, cniTypes.NewError(cniTypes.ErrInvalidNetworkConfig, "InvalidLoggingConfig",
+			fmt.Sprintf("unable to setup logging: %s", err))
 	}
 
-	// If CNI ADD gives us a PrevResult, we're a chained plugin and *must* detect a
-	// valid chained mode. If no chained mode we understand is specified, error out.
-	// Otherwise, continue with normal plugin execution.
-	if len(n.NetConf.RawPrevResult) != 0 {
-		if chainAction, err := getChainedAction(n, scopedLogger); chainAction != nil {
-			var (
-				res *cniTypesV1.Result
-				ctx = chainingapi.PluginContext{
-					Logger:     scopedLogger,
-					Args:       args,
-					CniArgs:    cniArgs,
-					NetConf:    n,
-					CiliumConf: conf,
-				}
-			)
+	logger = logger.With(
+		logfields.EventUUID, uuid.New(),
+		logfields.ContainerID, args.ContainerID,
+		logfields.NetNSName, args.Netns,
+		logfields.Interface, args.IfName,
+		logfields.Args, args.Args,
+		logfields.Path, args.Path,
 
-			res, err = chainAction.Add(context.TODO(), ctx, c)
-			if err != nil {
-				scopedLogger.Warn("Chained ADD failed", logfields.Error, err)
-				return err
-			}
-			scopedLogger.Debug("Returning result", logfields.Result, res)
-			return cniTypes.PrintResult(res, n.CNIVersion)
-		} else if err != nil {
-			scopedLogger.Error("Invalid chaining mode", logfields.Error, err)
-			return err
+		logfields.K8sNamespace, cniArgs.K8S_POD_NAMESPACE,
+		logfields.K8sPodName, cniArgs.K8S_POD_NAME,
+	)
+
+	if n.EnableDebug {
+		if err := gops.Listen(gops.Options{}); err != nil {
+			logger.Warn("Unable to start gops", logfields.Error, err)
 		} else {
-			// no chained action supplied; this is an error
-			const errMsg = "CNI PrevResult supplied, but not in chaining mode -- this is invalid, please set chaining-mode in CNI configuration"
-			scopedLogger.Error(errMsg)
-			return errors.New(errMsg)
+			defer gops.Close() //FIXME
 		}
 	}
 
-	res := &cniTypesV1.Result{}
-	configs, err := cmd.cfg.GetConfigurations(ConfigurationParams{scopedLogger, conf, args, cniArgs})
+	var c *client.Client
+	var conf *models.DaemonConfigurationStatus
+	if opts.useCiliumClient {
+		c, err = client.NewDefaultClientWithTimeout(defaults.ClientConnectTimeout)
+		if err != nil {
+			return nil, cniTypes.NewError(cniTypes.ErrTryAgainLater, "DaemonDown",
+				fmt.Sprintf("unable to connect to Cilium agent: %s", client.Hint(err)))
+		}
+
+		if opts.useCiliumConf {
+			conf, err = getConfigFromCiliumAgent(c)
+			if err != nil {
+				return nil, cniTypes.NewError(types.CniErrPluginNotAvailable, "CiliumConfig",
+					fmt.Sprintf("unable to obtain Cilium config: %s", client.Hint(err)))
+			}
+		}
+	}
+
+	var chainAction chainingapi.ChainingPlugin
+	if len(n.NetConf.RawPrevResult) != 0 || !opts.requirePrevResultForChaining {
+		chainAction, err = getChainedAction(n, logger)
+		if err != nil {
+			return nil, cniTypes.NewError(cniTypes.ErrInvalidNetworkConfig, "InvalidChainingMode",
+				fmt.Sprintf("Invalid chaining mode: %s", err))
+		}
+
+		// If CNI ADD gives us a PrevResult, we're a chained plugin and *must* detect a
+		// valid chained mode. If no chained mode we understand is specified, error out.
+		if opts.requirePrevResultForChaining && len(n.NetConf.RawPrevResult) != 0 && chainAction == nil {
+			const errMsg = "CNI PrevResult supplied, but not in chaining mode -- this is invalid, please set chaining-mode in CNI configuration"
+			return nil, cniTypes.NewError(cniTypes.ErrInvalidNetworkConfig, "InvalidChainingMode", errMsg)
+		}
+	}
+
+	cmd := &Cmd{
+		Logger:      logger,
+		Args:        args,
+		CniArgs:     cniArgs,
+		NetConf:     n,
+		Client:      c,
+		CiliumConf:  conf,
+		ChainAction: chainAction,
+	}
+
+	return cmd, nil
+}
+
+func CNIFuncs() skel.CNIFuncs {
+	return skel.CNIFuncs{
+		Add: func(args *skel.CmdArgs) error {
+			cmd, err := newCmd(args, cmdOpt{
+				useCiliumClient:              true,
+				useCiliumConf:                true,
+				requirePrevResultForChaining: true,
+			})
+			if err != nil {
+				return err
+			}
+
+			cmd.Logger.Debug(
+				"Processing CNI ADD request",
+				logfields.NetConf, cmd.NetConf,
+			)
+
+			if cmd.NetConf.PrevResult != nil {
+				cmd.Logger.Debug(
+					"CNI Previous result",
+					logfields.Previous, cmd.NetConf.PrevResult,
+				)
+			}
+
+			var res *cniTypesV1.Result
+			if cmd.ChainAction != nil {
+				res, err = cmd.ChainAction.Add(context.Background(), cmd.ChainedContext(), cmd.Client)
+			} else {
+				res, err = cmd.Add()
+			}
+			if err != nil {
+				return err
+			}
+			return cniTypes.PrintResult(res, cmd.NetConf.CNIVersion)
+		},
+		Del:    nil,
+		Check:  nil,
+		Status: nil,
+	}
+}
+
+func (cmd *Cmd) Add() (res *cniTypesV1.Result, err error) {
+	cfg := &DefaultConfigurator{}
+	configs, err := cfg.GetConfigurations(ConfigurationParams{scopedLogger, conf, args, cniArgs})
 	if err != nil {
 		return fmt.Errorf("failed to determine endpoint configuration: %w", err)
 	}
