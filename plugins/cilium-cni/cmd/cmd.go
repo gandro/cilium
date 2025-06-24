@@ -596,6 +596,8 @@ func (cmd *Cmd) Add(args *skel.CmdArgs) (err error) {
 	sysctl := sysctl.NewDirectSysctl(afero.NewOsFs(), "/proc")
 
 	for _, epConf := range configs {
+		// collect interface properties
+
 		if err = ns.Do(func() error {
 			return link.DeleteByName(epConf.IfName())
 		}); err != nil {
